@@ -121,7 +121,7 @@ except Exception as e:
         sys.exit(1)
 
 # -------------------------
-# Parse result (robust for tuple or other shapes)
+# Parse result (robust for tuple or other shapes) surefa
 # -------------------------
 labels = None
 logits = None
