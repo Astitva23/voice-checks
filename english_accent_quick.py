@@ -5,16 +5,11 @@ import soundfile as sf
 import torchaudio
 import torch
 from speechbrain.pretrained import EncoderClassifier
-
-# -------------------------
-# Config
-# -------------------------
-wav_in = "voice.wav"         # recorded file (replace if needed)
-clean_path = "voice_clean.wav"
-chunk_seconds = 8            # window length for chunks
-hop_seconds = 4              # hop between windows (overlap)
+# ====== PATCH: change config values ======
+chunk_seconds = 12           # longer chunks
+hop_seconds = 3              # more overlap -> smoother aggregation
 target_sr = 16000
-min_speech_seconds = 4.0     # require at least this much speech after trimming
+min_speech_seconds = 6.0     # require at least 6s of speech after trimming
 
 # -------------------------
 # Helpers: trim silence, normalize
@@ -118,6 +113,24 @@ if len(chunks) == 0:
     print("❗ No valid audio chunks extracted.")
     sys.exit(1)
 
+# tiny music detector: returns True if chunk likely musical (high spectral centroid + high spectral flux)
+import librosa
+
+def is_musical(y_np, sr):
+    # y_np: 1D numpy float audio
+    if len(y_np) < sr:  # <1s -> don't classify as music
+        return False
+    z = np.abs(librosa.stft(y_np.astype(np.float32), n_fft=1024, hop_length=512))
+    spec_cent = np.mean(librosa.feature.spectral_centroid(S=z, sr=sr))
+    spec_flux = np.mean(np.sum(np.diff(z, axis=1)**2, axis=0))
+    # threshold heuristics — tune if needed
+    if spec_cent > 3000 and spec_flux > 1e6:
+        return True
+    return False
+
+
+
+
 # --------- Robust classify + aggregate by label name ----------
 from collections import defaultdict
 
@@ -207,15 +220,16 @@ for i in topk_idx:
 # -------------------------
 # Map known keywords in VoxLingua label strings to English accent buckets.
 # This mapping is heuristic — you can edit keywords for your needs.
+# ====== More exhaustive bucket mapping (replace previous mapping) ======
 english_buckets = {
-    "American English": ["english", "en", "american", "us", "united states", "usa"],
-    "British English": ["british", "england", "uk", "united kingdom"],
-    "Indian English": ["india", "indian", "in:", "ind"],    # 'in' or 'indian' or 'india' in labels
-    "Australian English": ["australia", "australian"],
-    "African English": ["african", "south africa", "nigeria", "ghana", "kenya"],
-    "Canadian English": ["canada", "canadian"],
-    "South American English": ["south america", "argentina", "brazil", "chile", "colombia"],
-    "Other English": ["caribbean", "philippines", "singapore"]
+    "American English": ["american", "united states", "usa", "us", "united_states", "en-us", "us:","unitedstates"],
+    "British English": ["british", "england", "uk", "united kingdom", "england:","en-gb","uk:"],
+    "Indian English": ["india", "indian", "in:", "ind", "india:"],
+    "Australian English": ["australia", "australian", "au:","australia:"],
+    "African English": ["africa", "nigeria", "ghana", "kenya", "south africa", "south_africa", "ng:", "za:"],
+    "Canadian English": ["canada", "canadian", "ca:"],
+    "South American English": ["brazil", "argentina", "colombia", "chile", "south america", "br:"],
+    "Other English": ["caribbean", "philippines", "singapore", "singapore:"]
 }
 
 # Create a lowercase mapping loop
