@@ -37,13 +37,48 @@ STRONG_SIM = 0.65
 MEDIUM_SIM = 0.55
 
 # ---------------- Helpers ----------------
+# resilient audio loader + resampler
 def load_audio_mono(path, sr=SAMPLE_RATE):
-    y, orig_sr = sf.read(path)
+    # use soundfile to read (float32), convert to mono
+    y, orig_sr = sf.read(path, always_2d=False)
     if y.ndim > 1:
         y = np.mean(y, axis=1)
-    if orig_sr != sr:
-        y = librosa.resample(y.astype(np.float32), orig_sr, sr)
-    return y.astype(np.float32)
+    y = y.astype(np.float32)
+
+    if orig_sr == sr:
+        return y
+
+    # Try librosa.resample with keyword args (works across versions)
+    try:
+        y_rs = librosa.resample(y, orig_sr=orig_sr, target_sr=sr)
+        return y_rs.astype(np.float32)
+    except TypeError:
+        # older/newer librosa might not accept positional args; try alternative signature
+        try:
+            y_rs = librosa.resample(y, y_orig=orig_sr, y_new=sr)  # unlikely but safe try
+            return y_rs.astype(np.float32)
+        except Exception:
+            pass
+    except Exception:
+        # fallthrough to torchaudio-based resampling
+        pass
+
+    # fallback: use torchaudio resampler (convert to tensor)
+    try:
+        import torch
+        t = torch.from_numpy(y).float().unsqueeze(0)  # (1, N)
+        resampler = torchaudio.transforms.Resample(orig_freq=orig_sr, new_freq=sr)
+        t_rs = resampler(t)
+        y_rs = t_rs.squeeze(0).cpu().numpy()
+        return y_rs.astype(np.float32)
+    except Exception as e:
+        # last fallback: simple naive resample using numpy (very crude)
+        print("Warning: falling back to crude numpy resample due to:", e)
+        ratio = float(sr) / float(orig_sr)
+        indices = np.round(np.arange(0, len(y), 1.0/ratio)).astype(int)
+        indices = indices[indices < len(y)]
+        return y[indices].astype(np.float32)
+
 
 def get_embedding(wave_np, processor, model):
     # wave_np: 1D numpy float32 at SAMPLE_RATE
