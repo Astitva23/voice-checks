@@ -19,5 +19,17 @@ pretrained_models/
 .DS_Store
 Thumbs.db
 
+# Virtual env
+.venv/
+venv/
+
+# HF cache and local model folders
+.hf_cache/
+pretrained_models/
+.cache/
+*.ckpt
+*.pt
+
+
 
 echo ".venv/" 
