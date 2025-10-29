@@ -53,7 +53,7 @@ if not os.path.isdir(LOCAL_MODEL_DIR):
     die(f"Local model directory not found at '{LOCAL_MODEL_DIR}'.\nIf you already downloaded the model, ensure folder name and path are correct. Otherwise: download the model files and place them under this path.")
 
 # Look for expected files (speechbrain usually needs hyperparams.yaml, classifier.ckpt, label_encoder.txt etc.)
-expected_files = ["hyperparams.yaml", "classifier.ckpt", "label_encoder.txt"]
+expected_files = ["hyperparams.yaml", "classifier.ckpt", "accent_encoder.txt"]
 found = {f: os.path.exists(os.path.join(LOCAL_MODEL_DIR, f)) for f in expected_files}
 missing = [f for f, ok in found.items() if not ok]
 if missing:

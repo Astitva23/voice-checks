@@ -1,59 +1,95 @@
-# accent_speechbrain.py
-import os, sys
-import soundfile as sf
-import sounddevice as sd
-from speechbrain.pretrained import EncoderClassifier
+# run_accent_local_nosymlink.py
+# Safe loader: disables HF symlinks inside this process and forces local-only load.
+# Put this file in your project root and run: python run_accent_local_nosymlink.py
 
-INPUT_FILE = "./voice.wav"
-RECORD_SECONDS = 10
-MODEL = "Jzuluaga/accent-id-commonaccent_ecapa"  # public SpeechBrain model
+import os
+import sys
 
-def record_if_missing(path, dur=10, sr=16000):
-    if os.path.exists(path):
-        return
-    print(f"Recording {dur}s to {path} (speak naturally)...")
-    rec = sd.rec(int(dur * sr), samplerate=sr, channels=1, dtype='float32')
-    sd.wait()
-    sf.write(path, rec, sr)
-    print("Saved recording.")
+# ======== Force no HF symlinks and use local cache inside project ========
+# Must set BEFORE importing anything that may touch huggingface_hub or speechbrain
+os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-def main():
-    record_if_missing(INPUT_FILE, RECORD_SECONDS)
+# Use a project-local HF cache (avoids permissions in user profile)
+local_hf_cache = os.path.join(os.getcwd(), ".hf_cache")
+os.environ["HF_HOME"] = local_hf_cache      # huggingface hub uses this
+os.environ["TRANSFORMERS_CACHE"] = local_hf_cache
+os.environ["HF_DATASETS_CACHE"] = local_hf_cache
 
-    print("Loading SpeechBrain model (may download on first run)...")
-    try:
-        classifier = EncoderClassifier.from_hparams(
-    source="pretrained_models/accent-id-commonaccent_ecapa",
-    savedir="pretrained_models/accent-id-commonaccent_ecapa"
-    )
+# optional: make python show full tracebacks
+import traceback
 
-    except Exception as e:
-        print("Model load failed:", e)
-        sys.exit(1)
-    print("Model loaded.\nClassifying...")
+# ======== Config - edit if your paths differ ========
+LOCAL_MODEL_DIR = r"E:\new-voice\voice-checks\accent_app\pretrained_models\accent-id-commonaccent_ecapa"
+INPUT_FILE = r"E:\new-voice\voice-checks\accent_app\test_audio"
 
-    # classify_file returns (logits, score, index, labels)
+# quick checks before heavy imports
+if not os.path.exists(LOCAL_MODEL_DIR):
+    print("❌ Local model folder missing:", LOCAL_MODEL_DIR)
+    print("Place the model files (hyperparams.yaml, classifier.ckpt, embedding_model.ckpt, accent_encoder.txt) there.")
+    sys.exit(1)
+
+if not os.path.exists(INPUT_FILE):
+    print("❌ Input audio missing:", INPUT_FILE)
+    sys.exit(1)
+
+# ensure label file exists in some common names - copy if alternate present
+possible = [
+    os.path.join(LOCAL_MODEL_DIR, "label_encoder.txt"),
+    os.path.join(LOCAL_MODEL_DIR, "accent_encoder.txt"),
+    os.path.join(LOCAL_MODEL_DIR, "accent_encoder"),
+]
+for p in possible:
+    if os.path.exists(p) and not os.path.exists(os.path.join(LOCAL_MODEL_DIR, "label_encoder.txt")):
+        try:
+            import shutil
+            shutil.copy2(p, os.path.join(LOCAL_MODEL_DIR, "label_encoder.txt"))
+            print("ℹ️ Copied", p, "-> label_encoder.txt")
+            break
+        except Exception as e:
+            print("Warning: could not copy label file:", e)
+
+# ======== Now import heavy libs (after env vars set) ========
+try:
+    from speechbrain.inference import EncoderClassifier
+except Exception as e:
+    print("❌ Failed to import SpeechBrain. Full traceback:")
+    traceback.print_exc()
+    sys.exit(1)
+
+# ======== Load classifier from LOCAL_MODEL_DIR (no HF cache symlink) ========
+print("🧠 Loading model from local folder (no symlinks) ...")
+try:
+    classifier = EncoderClassifier.from_hparams(source=LOCAL_MODEL_DIR, savedir=LOCAL_MODEL_DIR)
+except Exception as e:
+    print("❌ Model load failed (from_hparams). Full traceback:")
+    traceback.print_exc()
+    print("\nHint: if this still errors with WinError 1314, try running this script once as Administrator.")
+    sys.exit(1)
+
+# ======== Classify the file ========
+print("✅ Model loaded. Classifying:", INPUT_FILE)
+try:
     out = classifier.classify_file(INPUT_FILE)
-    # SpeechBrain's custom interface returns out as tuples; try to parse robustly
-    try:
-        logits = out[0].squeeze()
-        labels = out[3]
-    except Exception:
-        print("Unexpected output format from classifier:", type(out))
-        print(out)
-        sys.exit(1)
+except Exception as e:
+    print("❌ classify_file failed. Traceback:")
+    traceback.print_exc()
+    sys.exit(1)
 
+# ======== Parse and print results robustly ========
+try:
     import torch, numpy as np
+    logits = out[0].squeeze()
+    labels = list(out[3])
     probs = torch.softmax(logits, dim=0).cpu().numpy()
     topk = np.argsort(probs)[-5:][::-1]
-
-    print("\nTop predictions:")
+    print("\n🔎 Top predictions:")
     for i in topk:
         print(f"  {labels[i]} — {probs[i]*100:.2f}%")
-
-    # print final top-1
     idx = int(np.argmax(probs))
-    print(f"\nFinal guess: {labels[idx]} — {probs[idx]*100:.2f}%")
-
-if __name__ == "__main__":
-    main()
+    print(f"\n🎯 Final guess: {labels[idx]} — {probs[idx]*100:.2f}%")
+except Exception:
+    print("⚠️ Unexpected output format from classifier. Raw output:")
+    print(out)
+    traceback.print_exc()
+    sys.exit(1)
