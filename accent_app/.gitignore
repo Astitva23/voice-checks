@@ -1,0 +1,23 @@
+# Python venv
+.venv/
+venv/
+ENV/
+env/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Hugging Face cache & local models (optional: avoid pushing heavy model files)
+.pretrained_models/
+pretrained_models/
+.cache/
+*.ckpt
+*.pt
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+
+echo ".venv/" 
