@@ -63,13 +63,19 @@ if missing:
 
 # 4) Load SpeechBrain locally (robust import + error messages)
 try:
-    from speechbrain.pretrained import EncoderClassifier
+    # new recommended import
+    from speechbrain.inference import EncoderClassifier
+
 except Exception as e:
     die(f"Failed to import SpeechBrain. Error: {e}\nMake sure speechbrain is installed in this environment: pip install speechbrain")
 
 print("🧠 Loading the SpeechBrain model from local folder (this will not download anything)...")
 try:
-    classifier = EncoderClassifier.from_hparams(source=LOCAL_MODEL_DIR, savedir=LOCAL_MODEL_DIR)
+    classifier = EncoderClassifier.classifier = EncoderClassifier.from_hparams(
+    source="pretrained_models/accent-id-commonaccent_ecapa",
+    savedir="pretrained_models/accent-id-commonaccent_ecapa"
+)
+
 except Exception as e:
     die(f"Model load failed: {e}\nIf you see a Windows permission or symlink error, try:\n  - Move the project out of OneDrive to a short path like C:\\projects\\voice-modulation\n  - Set environment variables: setx HF_HUB_DISABLE_SYMLINKS 1  and  setx HF_HUB_DISABLE_SYMLINKS_WARNING 1\n  - Or run the script from an Administrator terminal once.\nOr, alternatively, re-download the model files manually and ensure the folder structure is correct.")
 
