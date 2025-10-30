@@ -1,0 +1,13 @@
+flask
+soundfile
+sounddevice
+numpy
+scipy
+librosa
+tqdm
+pandas
+requests
+git+https://github.com/speechbrain/speechbrain.git
+# torch and torchaudio are large and platform-specific; installing them via pip may choose CPU wheels
+torch
+torchaudio

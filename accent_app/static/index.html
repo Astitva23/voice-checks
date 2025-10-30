@@ -1,92 +1,198 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Accent Demo</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width:720px; margin:30px auto; }
-    button { padding:10px 16px; margin:6px; }
-    #log { white-space:pre-wrap; background:#f8f8f8; padding:10px; border-radius:6px; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Accent Check</title>
+
+<style>
+  :root{
+    --bg:#0f1724; --card:#071427; --muted:#9aa6b2; --accent:#6ae29b; --accent-2:#6bb0ff;
+    --danger:#ff6b6b; --amber:#ffb86b;
+    --radius:18px; --mono: "Segoe UI", Roboto, system-ui, -apple-system, sans-serif;
+  }
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#06101a 0%, #071b2b 60%);font-family:var(--mono);color:#e6eef6;}
+  .frame{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:36px;}
+  .wrap{width:820px;max-width:96%;margin:0 auto;}
+  .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:22px;padding:28px;box-shadow:0 10px 40px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03);}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  header h1{font-size:22px;margin:0;font-weight:700}
+  header p{margin:0;color:var(--muted);font-size:13px}
+  .controls{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;align-items:center}
+  .leftControls{display:flex;gap:10px;align-items:center}
+  button{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);color:var(--accent);padding:12px 16px;border-radius:12px;font-weight:700;cursor:pointer;transition:transform .18s ease, box-shadow .18s ease, background .18s ease;}
+  button.secondary{color:var(--muted);background:transparent;border:1px dashed rgba(255,255,255,0.04)}
+  button:hover{ transform: translateY(-6px) scale(1.02); box-shadow: 0 18px 38px rgba(4,10,30,0.45); }
+  button:active{ transform: translateY(-2px) scale(0.995); }
+  .file{color:var(--muted);font-size:13px;margin-top:8px}
+  .row{display:flex;gap:12px;align-items:center;margin-top:12px}
+  #resultCard{margin-top:18px;padding:16px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.02);display:flex;align-items:center;justify-content:space-between}
+  .leftResult{display:flex;gap:14px;align-items:center}
+  .badge{width:84px;height:84px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#042018}
+  .labelLarge{font-size:20px;font-weight:800}
+  .confText{font-size:13px;color:var(--muted)}
+  .top5{font-size:13px;color:#dff7ea;line-height:1.35}
+  .consentWrap{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;margin-left:6px}
+  input[type="checkbox"]{width:16px;height:16px}
+  pre{white-space:pre-wrap;color:#cfeee2;background:transparent;border:0;padding:0;margin:8px 0 0 0;font-size:13px}
+  .hint{font-size:12px;color:var(--muted);margin-top:10px}
+  footer{margin-top:18px;color:var(--muted);font-size:12px;text-align:center}
+  @media (max-width:720px){ .controls{flex-direction:column;align-items:stretch} .leftResult{flex-direction:column;align-items:flex-start} .badge{width:64px;height:64px;font-size:16px} }
+</style>
+
 </head>
 <body>
-  <h2>Accent Classifier (Demo)</h2>
-  <p>Record from your mic or upload a WAV file, then click Classify.</p>
+  <div class="frame">
+    <div class="wrap">
+      <div class="card">
+        <header>
+          <div>
+            <h1>Accent Check</h1>
+            <p>Record or upload one clear English sentence (5–8s). Keep background quiet.</p>
+          </div>
+        </header>
 
-  <div>
-    <button id="recordBtn">Start Recording</button>
-    <button id="stopBtn" disabled>Stop</button>
-    <input type="file" id="fileInput" accept=".wav,audio/*">
-    <button id="uploadClassifyBtn">Upload & Classify</button>
+        <div class="controls">
+          <div class="leftControls">
+            <button id="recBtn">Start Recording</button>
+            <button id="stopBtn" class="secondary" disabled>Stop</button>
+            <div style="display:flex;flex-direction:column;align-items:flex-start">
+              <input id="fileInput" type="file" accept="audio/*" style="display:block"/>
+              <button id="uploadBtn" class="secondary" style="margin-top:8px">Upload & Classify</button>
+            </div>
+          </div>
+
+          <div style="margin-left:auto;display:flex;align-items:center">
+            <label class="consentWrap">
+              <input id="saveConsent" type="checkbox">
+              <span>Save sample (consent)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="file" id="fileInfo">No recording yet • Recommended: speak 6–8 seconds</div>
+
+        <div id="resultCard" hidden>
+          <div class="leftResult">
+            <div class="badge" id="badge" style="background:rgba(255,255,255,0.06); color:#fff">—</div>
+            <div>
+              <div class="labelLarge" id="bestLabel">—</div>
+              <div class="confText" id="bestConf">—</div>
+              <div class="top5" id="top5" style="margin-top:8px"></div>
+            </div>
+          </div>
+          <div style="max-width:38%;min-width:160px">
+            <pre id="debug" style="font-size:12px; color:var(--muted)"></pre>
+          </div>
+        </div>
+
+        <div class="hint">Tip: Speak natural sentences — e.g. "I would like a cup of coffee, please."</div>
+
+      </div>
+
+      <footer>Local demo — audio stays on this device • <span style="color:var(--muted)">Collected samples saved only if you consent</span></footer>
+    </div>
   </div>
 
-  <h3>Result</h3>
-  <div id="log">No result yet.</div>
+<script>
+let recBtn = document.getElementById("recBtn"), stopBtn = document.getElementById("stopBtn");
+let fileInput = document.getElementById("fileInput"), uploadBtn = document.getElementById("uploadBtn");
+let fileInfo = document.getElementById("fileInfo");
+let resultCard = document.getElementById("resultCard"), bestLabel = document.getElementById("bestLabel"), bestConf = document.getElementById("bestConf");
+let top5 = document.getElementById("top5"), debug = document.getElementById("debug"), badge = document.getElementById("badge");
+let saveConsent = document.getElementById("saveConsent");
 
-  <script>
-  let mediaRecorder, chunks = [];
-  const recordBtn = document.getElementById("recordBtn");
-  const stopBtn = document.getElementById("stopBtn");
-  const log = document.getElementById("log");
-  const fileInput = document.getElementById("fileInput");
-  const uploadBtn = document.getElementById("uploadClassifyBtn");
+let mediaRecorder, chunks = [];
 
-  recordBtn.onclick = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      chunks = [];
-      mediaRecorder.ondataavailable = e => chunks.push(e.data);
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunks, { 'type' : 'audio/wav; codecs=PCM' });
-        await sendBlob(blob);
-      };
-      mediaRecorder.start();
-      recordBtn.disabled = true; stopBtn.disabled = false;
-      log.textContent = "Recording... press Stop when done.";
-    } catch (err) {
-      log.textContent = "Microphone access denied or not available: " + err;
-    }
-  };
+recBtn.onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    chunks = [];
+    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(chunks, { type: 'audio/webm' });
+      fileInfo.textContent = "Recorded (ready). Uploading...";
+      await sendBlob(blob);
+    };
+    mediaRecorder.start();
+    recBtn.disabled = true; stopBtn.disabled = false;
+    fileInfo.textContent = "Recording... speak clearly for ~6s";
+  } catch (err) {
+    fileInfo.textContent = "Microphone error: " + err;
+  }
+};
 
-  stopBtn.onclick = () => {
-    if (mediaRecorder) mediaRecorder.stop();
-    recordBtn.disabled = false; stopBtn.disabled = true;
-    log.textContent = "Processing recorded audio...";
-  };
+stopBtn.onclick = () => {
+  if (mediaRecorder) mediaRecorder.stop();
+  recBtn.disabled = false; stopBtn.disabled = true;
+};
 
-  uploadBtn.onclick = async () => {
-    const f = fileInput.files[0];
-    if (!f) { log.textContent = "Pick a WAV file first"; return; }
-    log.textContent = "Uploading and classifying...";
-    await sendFile(f);
-  };
+uploadBtn.onclick = async () => {
+  const f = fileInput.files[0];
+  if (!f) { fileInfo.textContent = "Choose a file first"; return; }
+  fileInfo.textContent = "Uploading file...";
+  await sendFile(f);
+};
 
-  async function sendBlob(blob) {
-    const form = new FormData();
-    form.append("file", blob, "recorded.wav");
+async function sendBlob(blob) {
+  const form = new FormData();
+  form.append("file", blob, "recording.webm");
+  form.append("consent", saveConsent.checked ? "true" : "false");
+  await postForm(form);
+}
+
+async function sendFile(file) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("consent", saveConsent.checked ? "true" : "false");
+  await postForm(form);
+}
+
+function setBadgeColor(conf) {
+  // conf between 0 and 1
+  if (conf >= 0.6) {
+    badge.style.background = "linear-gradient(180deg,#9ff3c8,#6ae29b)";
+    badge.style.color = "#022013";
+  } else if (conf >= 0.35) {
+    badge.style.background = "linear-gradient(180deg,#ffdca8,#ffb86b)";
+    badge.style.color = "#2b1600";
+  } else {
+    badge.style.background = "linear-gradient(180deg,#ffb0b0,#ff6b6b)";
+    badge.style.color = "#2b0606";
+  }
+  badge.textContent = (conf*100).toFixed(0) + "%";
+}
+
+async function postForm(form) {
+  try {
     const resp = await fetch("/classify", { method: "POST", body: form });
     const j = await resp.json();
-    displayResult(j);
-  }
-
-  async function sendFile(file) {
-    const form = new FormData();
-    form.append("file", file);
-    const resp = await fetch("/classify", { method: "POST", body: form });
-    const j = await resp.json();
-    displayResult(j);
-  }
-
-  function displayResult(j) {
     if (j.error) {
-      log.textContent = "Error: " + j.error;
+      fileInfo.textContent = "Error: " + j.error;
+      debug.textContent = j.details || JSON.stringify(j, null, 2);
+      resultCard.hidden = false;
+      bestLabel.textContent = "Error";
+      bestConf.textContent = j.error;
+      top5.textContent = "";
+      setBadgeColor(0);
       return;
     }
-    let s = `Detected: ${j.label} — ${(j.confidence*100).toFixed(2)}%\n\nTop 5:\n`;
-    j.top5.forEach(x => s += ` ${x.label}: ${(x.prob*100).toFixed(2)}%\n`);
-    log.textContent = s;
+    const label = j.label || "—";
+    const conf = j.confidence ? (j.confidence) : 0;
+    bestLabel.textContent = label;
+    bestConf.textContent = (conf*100).toFixed(2) + "% confidence";
+    top5.innerHTML = j.top5.map(x => `${x.label}: ${(x.prob*100).toFixed(1)}%`).join("<br>");
+    debug.textContent = JSON.stringify(j, null, 2);
+    setBadgeColor(conf);
+    resultCard.hidden = false;
+    fileInfo.textContent = "Result ready";
+  } catch (err) {
+    fileInfo.textContent = "Network error: " + err;
+    debug.textContent = "";
+    setBadgeColor(0);
   }
-  </script>
+}
+</script>
 </body>
 </html>
