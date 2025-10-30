@@ -106,7 +106,7 @@ def classify_route():
         # lazy load model to avoid import-time failures
         ensure_model_loaded()
 
-        # basic request checks
+        # basic request checksfafaf
         if "file" not in request.files:
             return jsonify({"error": "No file part in request"}), 400
         f = request.files["file"]
