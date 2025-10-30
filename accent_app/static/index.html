@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Accent Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width:720px; margin:30px auto; }
+    button { padding:10px 16px; margin:6px; }
+    #log { white-space:pre-wrap; background:#f8f8f8; padding:10px; border-radius:6px; }
+  </style>
+</head>
+<body>
+  <h2>Accent Classifier (Demo)</h2>
+  <p>Record from your mic or upload a WAV file, then click Classify.</p>
+
+  <div>
+    <button id="recordBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <input type="file" id="fileInput" accept=".wav,audio/*">
+    <button id="uploadClassifyBtn">Upload & Classify</button>
+  </div>
+
+  <h3>Result</h3>
+  <div id="log">No result yet.</div>
+
+  <script>
+  let mediaRecorder, chunks = [];
+  const recordBtn = document.getElementById("recordBtn");
+  const stopBtn = document.getElementById("stopBtn");
+  const log = document.getElementById("log");
+  const fileInput = document.getElementById("fileInput");
+  const uploadBtn = document.getElementById("uploadClassifyBtn");
+
+  recordBtn.onclick = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      chunks = [];
+      mediaRecorder.ondataavailable = e => chunks.push(e.data);
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunks, { 'type' : 'audio/wav; codecs=PCM' });
+        await sendBlob(blob);
+      };
+      mediaRecorder.start();
+      recordBtn.disabled = true; stopBtn.disabled = false;
+      log.textContent = "Recording... press Stop when done.";
+    } catch (err) {
+      log.textContent = "Microphone access denied or not available: " + err;
+    }
+  };
+
+  stopBtn.onclick = () => {
+    if (mediaRecorder) mediaRecorder.stop();
+    recordBtn.disabled = false; stopBtn.disabled = true;
+    log.textContent = "Processing recorded audio...";
+  };
+
+  uploadBtn.onclick = async () => {
+    const f = fileInput.files[0];
+    if (!f) { log.textContent = "Pick a WAV file first"; return; }
+    log.textContent = "Uploading and classifying...";
+    await sendFile(f);
+  };
+
+  async function sendBlob(blob) {
+    const form = new FormData();
+    form.append("file", blob, "recorded.wav");
+    const resp = await fetch("/classify", { method: "POST", body: form });
+    const j = await resp.json();
+    displayResult(j);
+  }
+
+  async function sendFile(file) {
+    const form = new FormData();
+    form.append("file", file);
+    const resp = await fetch("/classify", { method: "POST", body: form });
+    const j = await resp.json();
+    displayResult(j);
+  }
+
+  function displayResult(j) {
+    if (j.error) {
+      log.textContent = "Error: " + j.error;
+      return;
+    }
+    let s = `Detected: ${j.label} — ${(j.confidence*100).toFixed(2)}%\n\nTop 5:\n`;
+    j.top5.forEach(x => s += ` ${x.label}: ${(x.prob*100).toFixed(2)}%\n`);
+    log.textContent = s;
+  }
+  </script>
+</body>
+</html>
