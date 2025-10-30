@@ -2,6 +2,11 @@
 import os, sys, traceback, tempfile, subprocess, shutil
 from pathlib import Path
 from flask import Flask, request, jsonify, send_file, abort
+import json
+import shutil
+import time
+from pathlib import Path
+import tempfile, subprocess, traceback
 
 # -------------------------
 # Config - edit if needed
@@ -100,55 +105,104 @@ def classify_route():
     try:
         # lazy load model to avoid import-time failures
         ensure_model_loaded()
+
+        # basic request checks
         if "file" not in request.files:
             return jsonify({"error": "No file part in request"}), 400
         f = request.files["file"]
         if f.filename == "":
             return jsonify({"error": "Empty filename"}), 400
 
+        # save uploaded payload to a temp file
         tmp_in = Path(tempfile.gettempdir()) / f"uploaded_{os.getpid()}_{int.from_bytes(os.urandom(4), 'little')}.bin"
         f.save(str(tmp_in))
 
-        # Try reading with soundfile first
+        # try to read directly with soundfile, else convert via ffmpeg to WAV
         import soundfile as sf
         wav_path = None
+        converted = None
         try:
-            sf.info(str(tmp_in))
+            sf.info(str(tmp_in))   # will raise on unsupported formats
             wav_path = str(tmp_in)
-        except Exception as e_sf:
-            # convert using ffmpeg to WAV (16000 mono)
+        except Exception:
+            # convert using ffmpeg -> WAV 16k mono
             converted = Path(tempfile.gettempdir()) / f"converted_{os.getpid()}.wav"
             ok, info = convert_with_ffmpeg(tmp_in, converted)
             if not ok:
-                tmp_in.unlink(missing_ok=True)
+                # cleanup and return error including ffmpeg output for debugging
+                try: tmp_in.unlink(missing_ok=True)
+                except: pass
                 return jsonify({"error": "ffmpeg conversion failed", "details": info}), 500
             wav_path = str(converted)
 
-        # classify
+        # perform classification (robust helper handles many input types)
         out = classify_audio_robust(classifier, wav_path)
-        # parse logits -> probs
+
+        # parse logits -> probabilities and top-k
         import torch, numpy as np
         if isinstance(out, (list, tuple)) and len(out) >= 1:
             logits = out[0].squeeze()
         else:
             logits = torch.tensor(out).squeeze()
         probs = torch.nn.functional.softmax(logits, dim=-1).cpu().numpy()
+
         best_idx = int(np.argmax(probs))
         best_conf = float(probs[best_idx])
         best_label = labels[best_idx] if labels and best_idx < len(labels) else f"idx_{best_idx}"
         topk_idx = np.argsort(probs)[-5:][::-1]
-        top5 = [{"label": labels[i] if labels and i < len(labels) else str(i), "prob": float(probs[i])} for i in topk_idx]
+        top5 = [{"label": (labels[i] if labels and i < len(labels) else str(i)), "prob": float(probs[i])} for i in topk_idx]
 
-        # cleanup
-        tmp_in.unlink(missing_ok=True)
-        if 'converted' in locals() and converted.exists():
-            converted.unlink(missing_ok=True)
+        # handle consent flag (save sample AFTER classification so we can store confidence)
+        consent_flag = (request.form.get("consent", "false").lower() == "true")
+        saved_path = None
+        if consent_flag:
+            try:
+                collected_dir = Path(BASE_DIR) / "collected"
+                collected_dir.mkdir(parents=True, exist_ok=True)
+                stamp = time.strftime("%Y%m%d-%H%M%S")
+                to_save_source = Path(wav_path) if wav_path is not None else tmp_in
+                ext = to_save_source.suffix if to_save_source.suffix else ".wav"
+                save_name = f"sample_{stamp}{ext}"
+                save_path = collected_dir / save_name
+                shutil.copy2(str(to_save_source), str(save_path))
+                meta = {
+                    "saved_from": str(to_save_source.name),
+                    "saved_at": stamp,
+                    "confidence": best_conf,
+                    "label": best_label
+                }
+                try:
+                    Path(str(save_path) + ".json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
+                saved_path = str(save_path)
+                print(f"Saved consented sample to: {save_path}")
+            except Exception as e_save:
+                # don't fail the whole request on minor saving errors; log and continue
+                print("Failed to save consented sample:", e_save)
 
-        return jsonify({"label": best_label, "confidence": best_conf, "top5": top5})
+        # cleanup temporary files
+        try:
+            tmp_in.unlink(missing_ok=True)
+        except Exception:
+            pass
+        try:
+            if converted is not None and converted.exists():
+                converted.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        # build response
+        resp = {"label": best_label, "confidence": best_conf, "top5": top5}
+        if saved_path:
+            resp["saved_path"] = saved_path
+        return jsonify(resp)
+
     except Exception as e:
         tb = traceback.format_exc()
         print("Exception in /classify:", tb)
         return jsonify({"error": str(e), "trace": tb}), 500
+
 
 if __name__ == "__main__":
     print("STARTING app_flask.py")
